@@ -1,0 +1,15 @@
+services:
+  backend:
+    environment:
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ""
+    networks:
+      - default
+      - backend_default
+    depends_on: []
+
+networks:
+  backend_default:
+    external: true

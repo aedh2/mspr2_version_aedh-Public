@@ -1,0 +1,17 @@
+export { MeDashboardPage } from "./pages/MeDashboard";
+export { BiometriePage } from "./pages/Biometrie";
+export { SommeilPage } from "./pages/Sommeil";
+export { SeancesPage } from "./pages/Seances";
+export { JournalPage } from "./pages/Journal";
+export { ProfilePage } from "./pages/Profile";
+export { OnboardingPage } from "./pages/Onboarding";
+export { ObjectifsPage } from "./pages/Objectifs";
+export { ExercicesPage } from "./pages/Exercices";
+export { ExerciceDetailPage } from "./pages/ExerciceDetail";
+export { NutritionPlatsPage } from "./pages/Nutrition";
+export { AlimentsPage } from "./pages/Aliments";
+export { PhotosPage } from "./pages/Photos";
+export { MealAnalysisPage } from "./pages/MealAnalysis";
+export { CoachPosturePage } from "./pages/CoachPosture";
+export { RecommandationsPage } from "./pages/Recommandations";
+export { HistoriquePage } from "./pages/Historique";

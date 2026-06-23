@@ -1,0 +1,15 @@
+export { AdminDashboardPage } from "./pages/AdminDashboard";
+export { UsersPage } from "./pages/Users";
+export { AdminUserDetailPage } from "./pages/UserDetail";
+export { EtlExecutionsPage } from "./pages/EtlExecutions";
+export { EtlExecutionDetailPage } from "./pages/EtlExecutionDetail";
+export { EtlLotsPage } from "./pages/EtlLots";
+export { EtlLotDetailPage } from "./pages/EtlLotDetail";
+export { EtlComparePage } from "./pages/EtlCompare";
+export { QualityControlsPage } from "./pages/QualityControls";
+export { QualitePage } from "./pages/Qualite";
+export { OrganisationsPage } from "./pages/Organisations";
+export { AdminAlimentsPage } from "./pages/Aliments";
+export { AdminExercicesPage } from "./pages/Exercices";
+export { ReglesQualitePage } from "./pages/ReglesQualite";
+export { ExportsPage } from "./pages/Exports";

@@ -1,0 +1,107 @@
+services:
+  db:
+    image: mariadb:10.11
+    container_name: healthai-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${DB_NAME:-healthai_coaching}
+      MYSQL_USER: ${DB_USER:-healthai}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-healthai}
+    ports:
+      - "127.0.0.1:${DB_PORT:-3306}:3306"
+    volumes:
+      - healthai_db_data:/var/lib/mysql
+      - "./backend/healthai_coaching bdd remplite.sql:/docker-entrypoint-initdb.d/001-healthai.sql:ro"
+      - "./backend/migrations/20260618_add_avatar_onboarding.sql:/docker-entrypoint-initdb.d/002-avatar-onboarding.sql:ro"
+      - "./backend/migrations/20260618_register_complete_profile.sql:/docker-entrypoint-initdb.d/003-register-complete-profile.sql:ro"
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: healthai-backend
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: ${DB_USER:-healthai}
+      DB_PASSWORD: ${DB_PASSWORD:-healthai}
+      DB_NAME: ${DB_NAME:-healthai_coaching}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-local-dev}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
+      MEDIA_ROOT: /app/data
+      MEDIA_BASE_URL: ${MEDIA_BASE_URL:-http://localhost:8000}
+      AI_ENABLE_EXTERNAL_CALLS: ${AI_ENABLE_EXTERNAL_CALLS:-false}
+      MEAL_AI_FORCE_MOCK: ${MEAL_AI_FORCE_MOCK:-false}
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGINGFACE_API_TOKEN: ${HUGGINGFACE_API_TOKEN:-}
+      HUGGINGFACE_VISION_MODEL: ${HUGGINGFACE_VISION_MODEL:-nateraw/food}
+      HUGGINGFACE_VISION_MODEL_FALLBACKS: ${HUGGINGFACE_VISION_MODEL_FALLBACKS:-prithivMLmods/Food-101-93M,nateraw/vit-base-food101}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./data:/app/data:ro
+      - ./data/uploads:/app/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: runner
+    container_name: healthai-frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api}
+      INTERNAL_API_URL: http://backend:8000/api
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  etl:
+    build:
+      context: .
+      dockerfile: healthai_etl/Dockerfile
+    container_name: healthai-etl
+    profiles: ["etl"]
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: ${DB_USER:-healthai}
+      DB_PASSWORD: ${DB_PASSWORD:-healthai}
+      DB_NAME: ${DB_NAME:-healthai_coaching}
+      FOOD_CSV: /app/data/daily_food_nutrition_dataset.csv
+      GYM_CSV: /app/data/gym_members_exercise_tracking.csv
+      SLEEP_CSV: /app/data/Sleep_health_and_lifestyle_dataset.csv
+      EXERCISE_DATASET_DIR: /app/data/exercisedb_v1_sample
+      EXERCISES_JSON: /app/data/exercisedb_v1_sample/exercises.json
+      BODYPARTS_JSON: /app/data/exercisedb_v1_sample/bodyParts.json
+      EQUIPMENTS_JSON: /app/data/exercisedb_v1_sample/equipments.json
+      MUSCLES_JSON: /app/data/exercisedb_v1_sample/muscles.json
+      PROGRESSION_PHOTOS_DIR: "/app/data/before after"
+      USERS_EXPORT_CSV: /app/healthai_etl/exports/generated_users_credentials.csv
+    volumes:
+      - ./data:/app/data:ro
+      - ./healthai_etl/exports:/app/healthai_etl/exports
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  healthai_db_data:

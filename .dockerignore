@@ -1,0 +1,10 @@
+.git/
+.pytest_cache/
+data/
+exports/
+backend/
+frontend/
+COMPREHENSION_PROJET_HEALTHAI.md
+message.txt
+**/__pycache__/
+**/*.py[cod]
