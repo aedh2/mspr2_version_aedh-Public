@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     meal_ai_timeout_seconds: float = 30.0
     meal_ai_max_image_bytes: int = 6_000_000
     meal_ai_force_mock: bool = False
+    gemini_api_key: str = ""
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "llama3.2:1b"
 
     model_config = SettingsConfigDict(
         env_file=("healthai_etl/.env", "backend/.env", ".env"),

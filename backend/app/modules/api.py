@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.db import models
 from app.modules import (
     admin,
+    ai_features,
     auth,
     dashboards,
     exercices_extra,
@@ -22,6 +23,7 @@ from app.modules.resources import (
 api_router = APIRouter()
 api_router.include_router(auth.router)
 api_router.include_router(me.router)
+api_router.include_router(ai_features.router)
 api_router.include_router(dashboards.router)
 # Routes statiques avant CRUD générique pour éviter l'interception par {item_id:int}.
 api_router.include_router(exercices_extra.router)
