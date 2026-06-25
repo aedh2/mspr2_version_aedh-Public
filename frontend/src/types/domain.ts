@@ -344,7 +344,7 @@ export type MealAnalysisConfig = {
 };
 
 export type MealAnalysisResult = {
-  source_analyse: "huggingface" | "huggingface_plus_local_reasoning" | "local_mock";
+  source_analyse: "huggingface" | "huggingface_plus_local_reasoning" | "local_mock" | "gemini-2.5-flash";
   mode: "external" | "mock";
   plat_detecte: string;
   confidence: number;

@@ -61,6 +61,10 @@ let authHandlers: AuthHandlers = {
 };
 let refreshPromise: Promise<string | null> | null = null;
 
+export function getAuthToken() {
+  return authHandlers.getToken();
+}
+
 export function configureApiAuth(handlers: AuthHandlers) {
   authHandlers = handlers;
 }
