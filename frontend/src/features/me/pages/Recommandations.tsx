@@ -19,7 +19,7 @@ import { ChartCard, MetricCard } from "@/src/components/ui/cards";
 import { Field, Input, Select, Textarea } from "@/src/components/ui/forms";
 import { EmptyState, ErrorState, LoadingState } from "@/src/components/ui/states";
 import { joinList, splitList } from "@/src/features/me/profile-form-utils";
-import { apiRequest } from "@/src/lib/api";
+import { apiRequest, getAuthToken } from "@/src/lib/api";
 import { formatNumber } from "@/src/lib/format";
 import type {
   NutritionRecommendation,
@@ -123,11 +123,113 @@ export function RecommandationsPage() {
   }, [profile.data, profileLoaded]);
 
   const mutation = useMutation({
-    mutationFn: (payload: RecommendationRequest) =>
-      apiRequest<RecommendationResponse>("/api/me/recommandations", {
+    mutationFn: async (payload: RecommendationRequest): Promise<RecommendationResponse> => {
+      const token = getAuthToken();
+      const response = await fetch("/api/ai/recommandations", {
         method: "POST",
-        body: payload
-      })
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { authorization: `Bearer ${token}` } : {})
+        }
+      });
+      if (!response.ok) throw new Error(`Erreur ${response.status}`);
+      const data = await response.json() as {
+        sport_tips: string[];
+        nutrition_tips: string[];
+        meal_plan: { day: string; meals: { name: string; description?: string }[] }[];
+        training_plan: { nom: string; muscles: string[]; series: number; repetitions: string; repos: string; intensite: string; description: string }[];
+        source: string;
+      };
+      const mode = payload.max_sport && payload.max_sport > 1 ? "sport" : "nutrition";
+      const contexte = {
+        utilisateur_id: 0,
+        objectif_principal: payload.objectif_principal || "sante",
+        age: null as number | null,
+        imc: null as number | null,
+        niveau_sportif: payload.niveau_sportif || "",
+        duree_seance_min: payload.duree_seance_min || null,
+        donnees_utilisees: ["profil utilisateur", "IA Ollama"]
+      };
+      if (mode === "nutrition") {
+        return {
+          nutrition: data.meal_plan.flatMap((day) =>
+            day.meals.map((meal) => ({
+              nom: meal.name,
+              type: "plat" as const,
+              justification: meal.description || "",
+              score_pertinence: 80,
+              score_securite: 85,
+              score_nutritionnel: 75,
+              calories_estimees: 0,
+              proteines_g: 0,
+              glucides_g: 0,
+              lipides_g: 0,
+              ingredients: [],
+              preparation: meal.description || "",
+              recette: "",
+              alternatives: [],
+              badges: [day.day],
+              contraintes_respectees: [],
+              allergenes_exclus: [],
+              budget_estime: null,
+              source: "ollama",
+              aliment_id: null
+            }))
+          ),
+          sport: { seances: [], exercices: [] },
+          generated_at: new Date().toISOString(),
+          source: (data.source ?? "external_ai") as RecommendationResponse["source"],
+          fallback_utilise: false,
+          fallback_message: null,
+          contexte,
+          contraintes_prises_en_compte: [],
+          messages: data.nutrition_tips
+        };
+      }
+      const exercices = (data.training_plan || []).map((ex, i) => ({
+        exercice_id: i,
+        nom: ex.nom,
+        duree_min: 0,
+        intensite: ex.intensite || "moderee",
+        frequence: `${ex.series} séries`,
+        equipement_necessaire: [],
+        muscles_cibles: ex.muscles || [],
+        niveau_adapte: payload.niveau_sportif || "intermediaire",
+        score_pertinence: 80,
+        score_securite: 85,
+        justification: ex.description || "",
+        series: ex.series,
+        repetitions: ex.repetitions,
+        repos: ex.repos,
+        contre_indications: [],
+        contraintes_respectees: []
+      }));
+      return {
+        nutrition: [],
+        sport: {
+          seances: [{
+            nom: "Plan d'entraînement personnalisé par IA",
+            justification: data.sport_tips[0] || "",
+            duree_min: payload.duree_seance_min || 60,
+            intensite: "moderee",
+            frequence: "3x/semaine",
+            materiel_necessaire: payload.equipement_disponible || [],
+            muscles_cibles: payload.muscles_cibles || [],
+            exercices,
+            contre_indications: []
+          }],
+          exercices
+        },
+        generated_at: new Date().toISOString(),
+        source: (data.source ?? "external_ai") as RecommendationResponse["source"],
+        fallback_utilise: false,
+        fallback_message: null,
+        contexte,
+        contraintes_prises_en_compte: [],
+        messages: data.sport_tips
+      };
+    }
   });
 
   const payload = useMemo<RecommendationRequest>(() => {

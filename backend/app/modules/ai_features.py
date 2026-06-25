@@ -52,6 +52,7 @@ class RecommendationResponse(BaseModel):
     sport_tips: list[str]
     nutrition_tips: list[str]
     meal_plan: list[dict[str, Any]]
+    training_plan: list[dict[str, Any]] = []
     source: str
 
 
@@ -143,6 +144,9 @@ async def recommandations_ia(
     sport_program = {
         "sessions": base.training_frequency if hasattr(base, "training_frequency") else 3,
         "exercises": [ex.name for ex in base.exercises[:5]] if hasattr(base, "exercises") else [],
+        "muscles": getattr(user, "muscles_cibles", []) or [],
+        "duree_min": getattr(user, "duree_seance_min", 60) or 60,
+        "materiel": getattr(user, "equipement_disponible", "salle de sport") or "salle de sport",
     }
 
     llm = OllamaLLMService(settings)
@@ -154,12 +158,13 @@ async def recommandations_ia(
             source="unavailable",
         )
 
-    sport_tips, nutrition_tips, meal_plan = await _run_llm(llm, profile, sport_program)
+    sport_tips, nutrition_tips, meal_plan, training_plan = await _run_llm(llm, profile, sport_program)
 
     return RecommendationResponse(
         sport_tips=sport_tips,
         nutrition_tips=nutrition_tips,
         meal_plan=meal_plan,
+        training_plan=training_plan,
         source="ollama-llama3.2",
     )
 
@@ -168,18 +173,20 @@ async def _run_llm(
     llm: OllamaLLMService,
     profile: dict,
     sport_program: dict,
-) -> tuple[list[str], list[str], list[dict]]:
+) -> tuple[list[str], list[str], list[dict], list[dict]]:
     import asyncio
-    sport_tips, nutrition_tips, meal_plan = await asyncio.gather(
+    sport_tips, nutrition_tips, meal_plan, training_plan = await asyncio.gather(
         llm.generate_sport_recommendations(profile, sport_program),
         llm.generate_nutrition_recommendations(profile),
         llm.generate_meal_plan(profile, profile.get("daily_targets", {})),
+        llm.generate_training_plan(profile, sport_program),
         return_exceptions=True,
     )
     return (
         sport_tips if isinstance(sport_tips, list) else [],
         nutrition_tips if isinstance(nutrition_tips, list) else [],
         meal_plan if isinstance(meal_plan, list) else [],
+        training_plan if isinstance(training_plan, list) else [],
     )
 
 

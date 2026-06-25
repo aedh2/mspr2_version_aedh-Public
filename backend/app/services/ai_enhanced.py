@@ -119,10 +119,32 @@ Donne exactement 5 recommandations courtes (une par ligne, commence par un verbe
 
 PROFIL : objectif={profile.get('goal', 'santé')}, niveau={profile.get('fitness_level', 'débutant')}
 PROGRAMME : {program.get('sessions', 3)} séances/semaine
-EXERCICES : {', '.join(program.get('exercises', [])[:5])}
 
 Donne exactement 5 conseils pratiques (un par ligne, commence par un verbe)."""
         return await self._generate_list(prompt)
+
+    async def generate_training_plan(self, profile: dict, program: dict) -> list[dict]:
+        """Génère un plan d'entraînement structuré avec exercices, séries et répétitions."""
+        muscles = ', '.join(program.get('muscles', [])) or 'corps complet'
+        prompt = f"""Tu es un coach sportif expert. Génère un plan d'entraînement en JSON. Réponds UNIQUEMENT avec le JSON, sans texte autour.
+
+PROFIL : objectif={profile.get('goal', 'prise de masse')}, niveau={profile.get('fitness_level', 'intermédiaire')}
+MUSCLES CIBLÉS : {muscles}
+DURÉE SÉANCE : {program.get('duree_min', 60)} minutes
+MATÉRIEL : {program.get('materiel', 'salle de sport')}
+
+FORMAT ATTENDU (liste de 4 à 6 exercices) :
+[{{"nom": "Développé couché", "muscles": ["pectoraux", "triceps"], "series": 4, "repetitions": "8-12", "repos": "90s", "intensite": "moderee", "description": "Allongé sur le banc, poussez la barre vers le haut en contrôlant la descente."}}]"""
+
+        try:
+            raw = await self._call_ollama(prompt)
+            start = raw.find("[")
+            end = raw.rfind("]")
+            if start != -1 and end != -1:
+                return json.loads(raw[start:end + 1])
+        except Exception as exc:
+            logger.error("Ollama training plan error: %s", exc)
+        return []
 
     async def generate_meal_plan(self, profile: dict, targets: dict) -> list[dict]:
         prompt = f"""Génère un plan repas pour 3 jours en JSON. Réponds UNIQUEMENT avec le JSON.
