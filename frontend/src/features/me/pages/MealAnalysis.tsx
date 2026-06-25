@@ -325,7 +325,7 @@ export function MealAnalysisPage() {
             <div className="meal-badge-stack">
               <StatusBadge value={`${Math.round(analysis.confidence * 100)}% confiance`} />
               <StatusBadge value={analysis.source_analyse.replace("+", " + ")} />
-              <StatusBadge value={analysis.mode === "external" ? "Hugging Face" : "Demo"} />
+              <StatusBadge value={analysis.mode === "external" ? "Gemini Vision" : "Demo"} />
             </div>
           </div>
 
@@ -414,32 +414,6 @@ export function MealAnalysisPage() {
               </ul>
             </article>
 
-            <article className="chart-card">
-              <div className="meal-card-head">
-                <div>
-                  <span className="eyebrow">Details IA</span>
-                  <h2>Predictions brutes</h2>
-                </div>
-              </div>
-              <details className="meal-details">
-                <summary>Afficher les labels bruts Hugging Face</summary>
-                {analysis.raw_vision_predictions.length ? (
-                  <div className="meal-result-list">
-                    {analysis.raw_vision_predictions.map((prediction, index) => (
-                      <div key={`${prediction.label}-${index}`} className="meal-result-row">
-                        <div>
-                          <strong>{prediction.label}</strong>
-                          <span>Label vision brut</span>
-                        </div>
-                        <span>{confidenceLabel(prediction.score)}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="muted">Aucune prediction brute disponible en mode demo.</div>
-                )}
-              </details>
-            </article>
           </div>
         </section>
       ) : (
@@ -473,10 +447,10 @@ function configMessageTitle(
     return "Configuration IA";
   }
   if (analysis?.mode === "external") {
-    return "Analyse Hugging Face active";
+    return "Analyse Gemini Vision active";
   }
   if (config?.external_ai_enabled && config?.huggingface_configured && !config.force_mock) {
-    return "Hugging Face pret";
+    return "IA prete";
   }
   return "Mode demonstration";
 }
@@ -489,12 +463,12 @@ function configMessageBody(
     return "Verification de la configuration Hugging Face...";
   }
   if (analysis?.mode === "external") {
-    return `Analyse Hugging Face active - modele : ${config?.vision_model || "nateraw/food"}`;
+    return "Analyse Gemini Vision active — aliments detectes avec macros estimees.";
   }
   if (config?.external_ai_enabled && config?.huggingface_configured && !config.force_mock) {
-    return `Hugging Face est configure avec le modele ${config.vision_model}. Lancez une analyse pour utiliser la reconnaissance reelle.`;
+    return "IA configuree. Lancez une analyse pour utiliser la reconnaissance reelle.";
   }
-  return "Mode demonstration : configurez HF_TOKEN pour activer la reconnaissance reelle.";
+  return "Mode demonstration : configurez GEMINI_API_KEY pour activer la reconnaissance reelle.";
 }
 
 function formatCameraError(error: unknown) {
