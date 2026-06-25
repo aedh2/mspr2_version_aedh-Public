@@ -147,13 +147,23 @@ FORMAT ATTENDU (liste de 4 à 6 exercices) :
         return []
 
     async def generate_meal_plan(self, profile: dict, targets: dict) -> list[dict]:
-        prompt = f"""Génère un plan repas pour 3 jours en JSON. Réponds UNIQUEMENT avec le JSON.
+        prompt = f"""Génère un plan repas pour 3 jours en JSON. Réponds UNIQUEMENT avec le JSON, sans texte autour.
 
 OBJECTIF : {profile.get('goal', 'santé')}
-CALORIES : {targets.get('calories', 2000)} kcal
-PROTÉINES : {targets.get('proteins_g', 120)}g
+CALORIES CIBLES : {targets.get('calories', 2000)} kcal/jour
+PROTÉINES CIBLES : {targets.get('proteins_g', 120)}g/jour
 
-FORMAT : [{{"day": "Lundi", "meals": [{{"name": "Petit-déjeuner", "description": "détail"}}, {{"name": "Déjeuner", "description": "..."}}, {{"name": "Dîner", "description": "..."}}]}}]"""
+Génère exactement 3 jours (Lundi, Mardi, Mercredi), chaque jour avec 3 repas (Petit-déjeuner, Déjeuner, Dîner).
+Chaque repas doit avoir une description détaillée, une justification nutritionnelle, et les macros estimées.
+
+EXEMPLE DE FORMAT (respecte exactement cette structure pour chaque repas) :
+[{{"day": "Lundi", "meals": [
+  {{"name": "Petit-déjeuner", "description": "Flocons d'avoine avec fruits rouges et yaourt grec", "justification": "Apport en fibres et protéines pour bien démarrer la journée", "calories": 350, "proteins_g": 18, "carbs_g": 45, "fats_g": 8}},
+  {{"name": "Déjeuner", "description": "Poulet grillé avec quinoa et légumes vapeur", "justification": "Protéines complètes et glucides complexes pour l'énergie de l'après-midi", "calories": 600, "proteins_g": 40, "carbs_g": 55, "fats_g": 15}},
+  {{"name": "Dîner", "description": "Saumon au four avec patates douces et brocoli", "justification": "Oméga-3 pour la récupération musculaire et glucides pour reconstituer les réserves", "calories": 500, "proteins_g": 35, "carbs_g": 40, "fats_g": 18}}
+]}},
+{{"day": "Mardi", "meals": [...]}}
+]"""
 
         try:
             raw = await self._call_ollama(prompt)

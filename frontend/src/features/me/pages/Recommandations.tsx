@@ -137,7 +137,7 @@ export function RecommandationsPage() {
       const data = await response.json() as {
         sport_tips: string[];
         nutrition_tips: string[];
-        meal_plan: { day: string; meals: { name: string; description?: string }[] }[];
+        meal_plan: { day: string; meals: { name: string; description?: string; justification?: string; calories?: number; proteins_g?: number; carbs_g?: number; fats_g?: number }[] }[];
         training_plan: { nom: string; muscles: string[]; series: number; repetitions: string; repos: string; intensite: string; description: string }[];
         source: string;
       };
@@ -157,15 +157,15 @@ export function RecommandationsPage() {
             day.meals.map((meal) => ({
               nom: meal.name,
               type: "plat" as const,
-              justification: meal.description || "",
+              justification: meal.justification || meal.description || "",
               score_pertinence: 80,
               score_securite: 85,
               score_nutritionnel: 75,
-              calories_estimees: 0,
-              proteines_g: 0,
-              glucides_g: 0,
-              lipides_g: 0,
-              ingredients: [],
+              calories_estimees: meal.calories || 0,
+              proteines_g: meal.proteins_g || 0,
+              glucides_g: meal.carbs_g || 0,
+              lipides_g: meal.fats_g || 0,
+              ingredients: [meal.description || meal.name],
               preparation: meal.description || "",
               recette: "",
               alternatives: [],
