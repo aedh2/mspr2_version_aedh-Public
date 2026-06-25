@@ -9,10 +9,10 @@ services:
       MYSQL_USER: ${DB_USER:-healthai}
       MYSQL_PASSWORD: ${DB_PASSWORD:-healthai}
     ports:
-      - "127.0.0.1:${DB_PORT:-3306}:3306"
+      - "127.0.0.1:3307:3306"
     volumes:
       - healthai_db_data:/var/lib/mysql
-      - "./backend/healthai_coaching bdd remplite.sql:/docker-entrypoint-initdb.d/001-healthai.sql:ro"
+      - "./backend/healthai_coaching.sql:/docker-entrypoint-initdb.d/001-healthai.sql:ro"
       - "./backend/migrations/20260618_add_avatar_onboarding.sql:/docker-entrypoint-initdb.d/002-avatar-onboarding.sql:ro"
       - "./backend/migrations/20260618_register_complete_profile.sql:/docker-entrypoint-initdb.d/003-register-complete-profile.sql:ro"
     healthcheck:
@@ -37,7 +37,7 @@ services:
       DB_NAME: ${DB_NAME:-healthai_coaching}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-local-dev}
       ENVIRONMENT: ${ENVIRONMENT:-development}
-      CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
+      CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000","http://localhost:8000"]'
       MEDIA_ROOT: /app/data
       MEDIA_BASE_URL: ${MEDIA_BASE_URL:-http://localhost:8000}
       AI_ENABLE_EXTERNAL_CALLS: ${AI_ENABLE_EXTERNAL_CALLS:-false}
@@ -63,6 +63,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       target: runner
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api}
     container_name: healthai-frontend
     restart: unless-stopped
     environment:

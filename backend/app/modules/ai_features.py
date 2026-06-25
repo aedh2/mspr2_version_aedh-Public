@@ -15,6 +15,7 @@ from app.core.config import Settings, get_settings
 from app.core.security import current_user
 from app.db.models import Utilisateur
 from app.db.session import get_db
+from app.schemas.recommendations import RecommendationRequest
 from app.services.ai_enhanced import GeminiVisionService, OllamaLLMService
 from app.services.recommendations import RecommendationEngine
 
@@ -129,21 +130,19 @@ async def recommandations_ia(
     settings: Settings = Depends(get_settings),
     user: Utilisateur = Depends(current_user),
 ) -> RecommendationResponse:
-    engine = RecommendationEngine(db)
-    base = engine.get_recommendations(user.id)
+    engine = RecommendationEngine()
+    base = engine.build(db, user, RecommendationRequest())
 
     profile = {
         "goal": getattr(user, "objectif_principal", "santé"),
         "fitness_level": getattr(user, "niveau_activite", "débutant"),
         "poids_kg": getattr(user, "poids_kg", None),
-        "daily_targets": base.get("nutritional_targets", {}),
-        "imbalances": base.get("imbalances", []),
+        "daily_targets": {"calories": base.daily_calories_target, "proteins_g": base.daily_proteins_target_g} if hasattr(base, "daily_calories_target") else {},
+        "imbalances": base.imbalances if hasattr(base, "imbalances") else [],
     }
     sport_program = {
-        "sessions": base.get("training_frequency", 3),
-        "exercises": [
-            ex.get("name", "") for ex in base.get("exercises", [])[:5]
-        ],
+        "sessions": base.training_frequency if hasattr(base, "training_frequency") else 3,
+        "exercises": [ex.name for ex in base.exercises[:5]] if hasattr(base, "exercises") else [],
     }
 
     llm = OllamaLLMService(settings)
