@@ -17,6 +17,13 @@ from app.core.config import Settings
 logger = logging.getLogger(__name__)
 
 
+def _safe_json(s: str):
+    try:
+        return json.loads(s)
+    except Exception:
+        return None
+
+
 class GeminiVisionService:
     """Analyse photo de repas via Google Gemini Vision."""
 
@@ -147,32 +154,61 @@ FORMAT ATTENDU (liste de 4 à 6 exercices) :
         return []
 
     async def generate_meal_plan(self, profile: dict, targets: dict) -> list[dict]:
-        prompt = f"""Génère un plan repas pour 3 jours en JSON. Réponds UNIQUEMENT avec le JSON, sans texte autour.
+        allergies = profile.get('allergies', [])
+        regime = profile.get('regime', '')
+        contraintes = profile.get('contraintes_sante', [])
+        allergies_str = ', '.join(allergies) if allergies else 'aucune'
+        regime_str = regime if regime else 'aucun'
+        contraintes_str = ', '.join(contraintes) if contraintes else 'aucune'
+        goal = profile.get('goal', 'sante')
 
-OBJECTIF : {profile.get('goal', 'santé')}
-CALORIES CIBLES : {targets.get('calories', 2000)} kcal/jour
-PROTÉINES CIBLES : {targets.get('proteins_g', 120)}g/jour
-
-Génère exactement 3 jours (Lundi, Mardi, Mercredi), chaque jour avec 3 repas (Petit-déjeuner, Déjeuner, Dîner).
-Chaque repas doit avoir une description détaillée, une justification nutritionnelle, et les macros estimées.
-
-EXEMPLE DE FORMAT (respecte exactement cette structure pour chaque repas) :
-[{{"day": "Lundi", "meals": [
-  {{"name": "Petit-déjeuner", "description": "Flocons d'avoine avec fruits rouges et yaourt grec", "justification": "Apport en fibres et protéines pour bien démarrer la journée", "calories": 350, "proteins_g": 18, "carbs_g": 45, "fats_g": 8}},
-  {{"name": "Déjeuner", "description": "Poulet grillé avec quinoa et légumes vapeur", "justification": "Protéines complètes et glucides complexes pour l'énergie de l'après-midi", "calories": 600, "proteins_g": 40, "carbs_g": 55, "fats_g": 15}},
-  {{"name": "Dîner", "description": "Saumon au four avec patates douces et brocoli", "justification": "Oméga-3 pour la récupération musculaire et glucides pour reconstituer les réserves", "calories": 500, "proteins_g": 35, "carbs_g": 40, "fats_g": 18}}
-]}},
-{{"day": "Mardi", "meals": [...]}}
-]"""
+        prompt = (
+            f"Reponds UNIQUEMENT avec un JSON valide. "
+            f"Objectif:{goal}. Allergies a exclure:{allergies_str}. Regime:{regime_str}. "
+            f"Genere 3 jours de repas (Lundi Mardi Mercredi), 3 repas par jour (Petit-dejeuner Dejeuner Diner). "
+            f"Format: "
+            f'[{{"day":"Lundi","meals":['
+            f'{{"name":"Petit-dejeuner","description":"nom du plat","justification":"pourquoi ce plat pour ce profil","calories":350,"proteins_g":20,"carbs_g":40,"fats_g":10}},'
+            f'{{"name":"Dejeuner","description":"nom du plat","justification":"pourquoi","calories":600,"proteins_g":40,"carbs_g":55,"fats_g":15}},'
+            f'{{"name":"Diner","description":"nom du plat","justification":"pourquoi","calories":500,"proteins_g":35,"carbs_g":40,"fats_g":18}}'
+            f']}},'
+            f'{{"day":"Mardi","meals":[...]}},'
+            f'{{"day":"Mercredi","meals":[...]}}]'
+        )
 
         try:
             raw = await self._call_ollama(prompt)
+            # Nettoyer les balises markdown
+            raw = re.sub(r"```json\s*", "", raw)
+            raw = re.sub(r"```\s*", "", raw)
+
+            # Cas 1 : tableau direct [...]
             start = raw.find("[")
             end = raw.rfind("]")
             if start != -1 and end != -1:
-                return json.loads(raw[start:end + 1])
-        except Exception:
-            pass
+                try:
+                    return json.loads(raw[start:end + 1])
+                except Exception:
+                    pass
+
+            # Cas 2 : objet {"days": [...]} ou {"meal_plan": [...]}
+            try:
+                obj = json.loads(raw[raw.find("{"):raw.rfind("}") + 1])
+                for key in ("days", "meal_plan", "plan", "repas"):
+                    if key in obj and isinstance(obj[key], list):
+                        return obj[key]
+            except Exception:
+                pass
+
+            # Cas 3 : extraire les objets day un par un
+            days = re.findall(r'\{[^{}]*"day"\s*:[^{}]*"meals"\s*:\s*\[[^\[\]]*\]\s*\}', raw, re.DOTALL)
+            parsed = [json.loads(d) for d in days if _safe_json(d)]
+            if parsed:
+                return parsed
+
+            logger.warning("Ollama meal plan: no valid JSON found")
+        except Exception as exc:
+            logger.error("Ollama meal plan parse error: %s", exc)
         return []
 
     async def _generate_list(self, prompt: str) -> list[str]:
@@ -185,7 +221,7 @@ EXEMPLE DE FORMAT (respecte exactement cette structure pour chaque repas) :
             return []
 
     async def _call_ollama(self, prompt: str) -> str:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
                 f"{self.base_url}/api/generate",
                 json={"model": self.model, "prompt": prompt, "stream": False},

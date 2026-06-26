@@ -17,6 +17,7 @@ export function RecommendationCard({
   eyebrow,
   title,
   description,
+  justification,
   score,
   safetyScore,
   confidenceScore,
@@ -29,6 +30,7 @@ export function RecommendationCard({
   eyebrow: string;
   title: string;
   description: string;
+  justification?: string | null;
   score?: number | null;
   safetyScore?: number | null;
   confidenceScore?: number | null;
@@ -78,6 +80,12 @@ export function RecommendationCard({
         <HealthProgress label="Confiance" value={confidenceScore ?? score} tone="blue" />
       </div>
       <BadgeList items={badges} />
+      {justification ? (
+        <div className="recommendation-justification">
+          <strong>Pourquoi ce plat ?</strong>
+          <span>{justification}</span>
+        </div>
+      ) : null}
       {alternatives.length ? (
         <div className="recommendation-alt">
           <Sparkles size={15} aria-hidden />

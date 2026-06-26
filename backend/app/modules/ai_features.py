@@ -127,26 +127,35 @@ async def analyse_repas(
     ),
 )
 async def recommandations_ia(
+    request: RecommendationRequest,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
     user: Utilisateur = Depends(current_user),
 ) -> RecommendationResponse:
     engine = RecommendationEngine()
-    base = engine.build(db, user, RecommendationRequest())
+    base = engine.build(db, user, request)
+
+    allergies = request.allergies or []
+    regime = request.regime_alimentaire or ""
+    contraintes_sante = request.contraintes_sante or []
 
     profile = {
-        "goal": getattr(user, "objectif_principal", "santé"),
-        "fitness_level": getattr(user, "niveau_activite", "débutant"),
+        "goal": request.objectif_principal or getattr(user, "objectif_principal", "santé"),
+        "fitness_level": request.niveau_sportif or getattr(user, "niveau_activite", "débutant"),
         "poids_kg": getattr(user, "poids_kg", None),
         "daily_targets": {"calories": base.daily_calories_target, "proteins_g": base.daily_proteins_target_g} if hasattr(base, "daily_calories_target") else {},
         "imbalances": base.imbalances if hasattr(base, "imbalances") else [],
+        "allergies": allergies,
+        "regime": regime,
+        "contraintes_sante": contraintes_sante,
     }
     sport_program = {
-        "sessions": base.training_frequency if hasattr(base, "training_frequency") else 3,
-        "exercises": [ex.name for ex in base.exercises[:5]] if hasattr(base, "exercises") else [],
-        "muscles": getattr(user, "muscles_cibles", []) or [],
-        "duree_min": getattr(user, "duree_seance_min", 60) or 60,
-        "materiel": getattr(user, "equipement_disponible", "salle de sport") or "salle de sport",
+        "sessions": request.frequence_seances_hebdo or 3,
+        "muscles": request.muscles_cibles or [],
+        "duree_min": request.duree_seance_min or 60,
+        "materiel": ", ".join(request.equipement_disponible) if request.equipement_disponible else "salle de sport",
+        "type_seance": request.type_seance or "",
+        "douleur": request.douleur_limitation or "",
     }
 
     llm = OllamaLLMService(settings)
@@ -174,20 +183,24 @@ async def _run_llm(
     profile: dict,
     sport_program: dict,
 ) -> tuple[list[str], list[str], list[dict], list[dict]]:
-    import asyncio
-    sport_tips, nutrition_tips, meal_plan, training_plan = await asyncio.gather(
-        llm.generate_sport_recommendations(profile, sport_program),
-        llm.generate_nutrition_recommendations(profile),
-        llm.generate_meal_plan(profile, profile.get("daily_targets", {})),
-        llm.generate_training_plan(profile, sport_program),
-        return_exceptions=True,
-    )
-    return (
-        sport_tips if isinstance(sport_tips, list) else [],
-        nutrition_tips if isinstance(nutrition_tips, list) else [],
-        meal_plan if isinstance(meal_plan, list) else [],
-        training_plan if isinstance(training_plan, list) else [],
-    )
+    # Appels séquentiels — Ollama ne traite qu'une requête à la fois
+    try:
+        nutrition_tips = await llm.generate_nutrition_recommendations(profile)
+    except Exception:
+        nutrition_tips = []
+    try:
+        sport_tips = await llm.generate_sport_recommendations(profile, sport_program)
+    except Exception:
+        sport_tips = []
+    try:
+        meal_plan = await llm.generate_meal_plan(profile, profile.get("daily_targets", {}))
+    except Exception:
+        meal_plan = []
+    try:
+        training_plan = await llm.generate_training_plan(profile, sport_program)
+    except Exception:
+        training_plan = []
+    return nutrition_tips, sport_tips, meal_plan, training_plan
 
 
 @router.get(

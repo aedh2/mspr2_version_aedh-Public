@@ -131,7 +131,8 @@ export function RecommandationsPage() {
         headers: {
           "Content-Type": "application/json",
           ...(token ? { authorization: `Bearer ${token}` } : {})
-        }
+        },
+        body: JSON.stringify(payload)
       });
       if (!response.ok) throw new Error(`Erreur ${response.status}`);
       const data = await response.json() as {
@@ -722,7 +723,8 @@ function NutritionCard({ item, excludedAllergens }: { item: NutritionRecommendat
     <RecommendationCard
       eyebrow={item.type}
       title={item.nom}
-      description={item.justification}
+      description=""
+      justification={item.justification}
       score={item.score_pertinence}
       safetyScore={item.score_securite}
       confidenceScore={Math.round((item.score_pertinence + item.score_securite + item.score_nutritionnel) / 3)}
@@ -736,7 +738,7 @@ function NutritionCard({ item, excludedAllergens }: { item: NutritionRecommendat
         { label: "Ingredients", value: listText(item.ingredients) || item.nom },
         { label: "Preparation", value: item.preparation || item.recette },
         { label: "Budget estime", value: budgetLabel(item.budget_estime) || extractBudget(item.badges) },
-        { label: "Allergenes exclus", value: allergens.length ? allergens.join(", ") : "Aucun declare" }
+        { label: "Allergenes exclus", value: allergens.length ? allergens.join(", ") : "aucune" }
       ]}
       badges={[...item.badges, ...item.contraintes_respectees]}
       alternatives={item.alternatives}

@@ -896,6 +896,25 @@ textarea,
   gap: 8px;
 }
 
+.recommendation-justification {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0.6rem 0.9rem;
+  background: rgba(37, 99, 235, 0.06);
+  border-left: 3px solid #3b82f6;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: #444;
+}
+
+.recommendation-justification strong {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #3b82f6;
+}
+
 .recommendation-alt,
 .constraint-badge-list {
   display: flex;
