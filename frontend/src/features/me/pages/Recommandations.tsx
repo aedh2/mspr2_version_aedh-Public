@@ -138,7 +138,7 @@ export function RecommandationsPage() {
       const data = await response.json() as {
         sport_tips: string[];
         nutrition_tips: string[];
-        meal_plan: { day: string; meals: { name: string; description?: string; justification?: string; calories?: number; proteins_g?: number; carbs_g?: number; fats_g?: number }[] }[];
+        meal_plan: { day: string; meals: { name: string; description?: string; justification?: string; recette?: string; calories?: number; proteins_g?: number; carbs_g?: number; fats_g?: number }[] }[];
         training_plan: { nom: string; muscles: string[]; series: number; repetitions: string; repos: string; intensite: string; description: string }[];
         source: string;
       };
@@ -167,7 +167,7 @@ export function RecommandationsPage() {
               glucides_g: meal.carbs_g || 0,
               lipides_g: meal.fats_g || 0,
               ingredients: [meal.description || meal.name],
-              preparation: meal.description || "",
+              preparation: meal.recette || meal.description || "",
               recette: "",
               alternatives: [],
               badges: [day.day],

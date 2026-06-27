@@ -135,19 +135,21 @@ async def recommandations_ia(
     engine = RecommendationEngine()
     base = engine.build(db, user, request)
 
-    allergies = request.allergies or []
-    regime = request.regime_alimentaire or ""
-    contraintes_sante = request.contraintes_sante or []
-
     profile = {
         "goal": request.objectif_principal or getattr(user, "objectif_principal", "santé"),
         "fitness_level": request.niveau_sportif or getattr(user, "niveau_activite", "débutant"),
         "poids_kg": getattr(user, "poids_kg", None),
         "daily_targets": {"calories": base.daily_calories_target, "proteins_g": base.daily_proteins_target_g} if hasattr(base, "daily_calories_target") else {},
         "imbalances": base.imbalances if hasattr(base, "imbalances") else [],
-        "allergies": allergies,
-        "regime": regime,
-        "contraintes_sante": contraintes_sante,
+        "allergies": request.allergies or [],
+        "regime": request.regime_alimentaire or "",
+        "contraintes_sante": request.contraintes_sante or [],
+        "preferences": request.preferences_alimentaires or [],
+        "aliments_evites": request.aliments_evites or [],
+        "culture": request.culture_alimentaire or "",
+        "budget": request.budget or "",
+        "temps_preparation": request.temps_preparation or "",
+        "type_repas": request.type_repas or "",
     }
     sport_program = {
         "sessions": request.frequence_seances_hebdo or 3,
@@ -156,6 +158,10 @@ async def recommandations_ia(
         "materiel": ", ".join(request.equipement_disponible) if request.equipement_disponible else "salle de sport",
         "type_seance": request.type_seance or "",
         "douleur": request.douleur_limitation or "",
+        "lieu": request.lieu or "",
+        "niveau": request.niveau_sportif or "",
+        "contraintes_sante": request.contraintes_sante or [],
+        "objectif": request.objectif_principal or getattr(user, "objectif_principal", "santé"),
     }
 
     llm = OllamaLLMService(settings)
@@ -172,8 +178,8 @@ async def recommandations_ia(
     return RecommendationResponse(
         sport_tips=sport_tips,
         nutrition_tips=nutrition_tips,
-        meal_plan=meal_plan,
-        training_plan=training_plan,
+        meal_plan=[d for d in meal_plan if isinstance(d, dict)],
+        training_plan=[d for d in training_plan if isinstance(d, dict)],
         source="ollama-llama3.2",
     )
 
