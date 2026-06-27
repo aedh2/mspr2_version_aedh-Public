@@ -12,6 +12,7 @@ import {
   Target,
   UtensilsCrossed
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ConstraintBadgeList, RecommendationCard } from "@/src/components/health/recommendation-card";
 import { Button } from "@/src/components/ui/button";
@@ -104,11 +105,13 @@ const initialSportForm: SportFormState = {
 };
 
 export function RecommandationsPage() {
+  const router = useRouter();
   const [selectedMode, setSelectedMode] = useState<RecommendationMode | null>(null);
   const [mealForm, setMealForm] = useState<MealFormState>(initialMealForm);
   const [sportForm, setSportForm] = useState<SportFormState>(initialSportForm);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [savedSeanceId, setSavedSeanceId] = useState<number | null>(null);
 
   const profile = useQuery({
     queryKey: ["/api/me/profile"],
@@ -139,7 +142,7 @@ export function RecommandationsPage() {
         sport_tips: string[];
         nutrition_tips: string[];
         meal_plan: { day: string; meals: { name: string; description?: string; justification?: string; recette?: string; calories?: number; proteins_g?: number; carbs_g?: number; fats_g?: number }[] }[];
-        training_plan: { nom: string; muscles: string[]; series: number; repetitions: string; repos: string; intensite: string; description: string }[];
+        training_plan: { nom: string; muscles: string[]; series: number; repetitions: string; repos: string; intensite: string; description: string; duree_min?: number; justification?: string; gif_url?: string; nom_db?: string; body_part?: string; equipement_necessaire?: string[]; exercice_id_db?: number | null; calories?: number }[];
         source: string;
       };
       const mode = payload.max_sport && payload.max_sport > 1 ? "sport" : "nutrition";
@@ -191,20 +194,24 @@ export function RecommandationsPage() {
       const exercices = (data.training_plan || []).map((ex, i) => ({
         exercice_id: i,
         nom: ex.nom,
-        duree_min: 0,
+        duree_min: ex.duree_min || 0,
         intensite: ex.intensite || "moderee",
         frequence: `${ex.series} séries`,
-        equipement_necessaire: [],
+        equipement_necessaire: ex.equipement_necessaire || [],
         muscles_cibles: ex.muscles || [],
         niveau_adapte: payload.niveau_sportif || "intermediaire",
         score_pertinence: 80,
         score_securite: 85,
-        justification: ex.description || "",
+        justification: ex.justification || ex.description || "",
         series: ex.series,
         repetitions: ex.repetitions,
         repos: ex.repos,
         contre_indications: [],
-        contraintes_respectees: []
+        contraintes_respectees: [],
+        gif_url: ex.gif_url || null,
+        nom_db: ex.nom_db || null,
+        exercice_id_db: ex.exercice_id_db ?? null,
+        calories_brulees: ex.calories ?? 0,
       }));
       return {
         nutrition: [],
@@ -233,6 +240,43 @@ export function RecommandationsPage() {
     }
   });
 
+  const saveSeanceMutation = useMutation({
+    mutationFn: async (): Promise<{ seance_id: number; exercices_enregistres: number }> => {
+      const token = getAuthToken();
+      const exercices = (result?.sport.exercices || []).map((ex) => ({
+        nom: ex.nom,
+        exercice_id_db: ex.exercice_id_db ?? null,
+        series: ex.series ?? null,
+        repetitions: ex.repetitions ?? null,
+        repos: ex.repos ?? null,
+        duree_min: ex.duree_min ?? null,
+        intensite: ex.intensite ?? null,
+        calories: ex.calories_brulees ?? null,
+        justification: ex.justification ?? null,
+        muscles: ex.muscles_cibles ?? []
+      }));
+      const totalDuree = exercices.reduce((sum, ex) => sum + (ex.duree_min || 0), 0);
+      const response = await fetch("/api/ai/seances", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          type_seance: sportForm.type_seance || "MUSCULATION",
+          duree_min: Number(sportForm.duree_seance_min) || totalDuree || null,
+          niveau: sportForm.niveau_sportif || null,
+          objectif: sportForm.objectif_principal || null,
+          exercices
+        })
+      });
+      if (!response.ok) throw new Error(`Erreur ${response.status}`);
+      return response.json();
+    },
+    onSuccess: (data) => setSavedSeanceId(data.seance_id)
+  });
+
   const payload = useMemo<RecommendationRequest>(() => {
     if (selectedMode === "sport") return buildSportPayload(sportForm);
     return buildMealPayload(mealForm);
@@ -252,12 +296,16 @@ export function RecommandationsPage() {
       return;
     }
     setFormError(null);
+    setSavedSeanceId(null);
+    saveSeanceMutation.reset();
     mutation.mutate(payload);
   };
 
   const chooseMode = (mode: RecommendationMode) => {
     setSelectedMode(mode);
     setFormError(null);
+    setSavedSeanceId(null);
+    saveSeanceMutation.reset();
     mutation.reset();
   };
 
@@ -392,6 +440,35 @@ export function RecommandationsPage() {
                         <EmptyState label="Aucune recommandation sport compatible avec toutes les contraintes." />
                       )}
                     </div>
+                    {result.sport.exercices.length ? (
+                      <div className="seance-save-action">
+                        {savedSeanceId ? (
+                          <div className="seance-save-success" role="status">
+                            <CheckCircle2 size={18} />
+                            <span>Seance enregistree dans votre historique.</span>
+                            <Button variant="secondary" onClick={() => router.push(`/me/seances/${savedSeanceId}`)}>
+                              Voir la seance
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            <Button
+                              onClick={() => saveSeanceMutation.mutate()}
+                              disabled={saveSeanceMutation.isPending}
+                              aria-busy={saveSeanceMutation.isPending}
+                            >
+                              {saveSeanceMutation.isPending ? <Loader2 className="spin" size={16} /> : <Dumbbell size={16} />}
+                              {saveSeanceMutation.isPending ? "Enregistrement..." : "Ajouter la seance a mon historique"}
+                            </Button>
+                            {saveSeanceMutation.isError ? (
+                              <div className="form-error" role="alert">
+                                Impossible d'enregistrer la seance. Reessayez.
+                              </div>
+                            ) : null}
+                          </>
+                        )}
+                      </div>
+                    ) : null}
                   </ChartCard>
                 )}
               </>
@@ -786,25 +863,43 @@ function SessionCard({ session }: { session: SportSessionRecommendation }) {
 
 function SportCard({ item }: { item: SportExerciseRecommendation }) {
   return (
-    <RecommendationCard
-      eyebrow="Exercice"
-      title={item.nom}
-      description={`${item.justification} Niveau adapte: ${item.niveau_adapte}.`}
-      score={item.score_pertinence}
-      safetyScore={item.score_securite}
-      confidenceScore={Math.round((item.score_pertinence + item.score_securite) / 2)}
-      metrics={[{ label: "Duree", value: item.duree_min, suffix: " min" }]}
-      details={[
-        { label: "Series et repetitions", value: item.series ? `${item.series} x ${item.repetitions || "repetitions adaptees"}` : item.repetitions },
-        { label: "Repos", value: item.repos },
-        { label: "Materiel", value: listText(item.equipement_necessaire) || "sans materiel specifique" },
-        { label: "Muscles cibles", value: listText(item.muscles_cibles) },
-        { label: "Adaptations", value: listText(item.adaptations) || "Ajuste au niveau declare" },
-        { label: "Contre-indications", value: listText(item.contre_indications) || "Aucune contre-indication bloquante" }
-      ]}
-      badges={[item.intensite, item.frequence, ...item.equipement_necessaire, ...item.muscles_cibles, ...item.contraintes_respectees]}
-      warning={item.contre_indications.join(" ")}
-    />
+    <div className="sport-card-with-gif">
+      {item.gif_url ? (
+        <div className="sport-card-gif-wrapper">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={item.gif_url}
+            alt={`Démonstration : ${item.nom_db || item.nom}`}
+            className="sport-card-gif"
+          />
+          {item.nom_db && item.nom_db.toLowerCase() !== item.nom.toLowerCase() ? (
+            <span className="sport-card-gif-label">Exercice similaire : {item.nom_db}</span>
+          ) : null}
+        </div>
+      ) : null}
+      <RecommendationCard
+        eyebrow="Exercice"
+        title={item.nom}
+        description={`${item.justification} Niveau adapte: ${item.niveau_adapte}.`}
+        score={item.score_pertinence}
+        safetyScore={item.score_securite}
+        confidenceScore={Math.round((item.score_pertinence + item.score_securite) / 2)}
+        metrics={[
+          { label: "Duree", value: item.duree_min, suffix: " min" },
+          { label: "Calories", value: item.calories_brulees ?? 0, suffix: " kcal" }
+        ]}
+        details={[
+          { label: "Series et repetitions", value: item.series ? `${item.series} x ${item.repetitions || "repetitions adaptees"}` : item.repetitions },
+          { label: "Repos", value: item.repos },
+          { label: "Materiel", value: listText(item.equipement_necessaire) || "sans materiel specifique" },
+          { label: "Muscles cibles", value: listText(item.muscles_cibles) },
+          { label: "Adaptations", value: listText(item.adaptations) || "Ajuste au niveau declare" },
+          { label: "Contre-indications", value: listText(item.contre_indications) || "Aucune contre-indication bloquante" }
+        ]}
+        badges={[item.intensite, item.frequence, ...item.equipement_necessaire, ...item.muscles_cibles, ...item.contraintes_respectees]}
+        warning={item.contre_indications.join(" ")}
+      />
+    </div>
   );
 }
 

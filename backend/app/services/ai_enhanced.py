@@ -135,33 +135,88 @@ Donne exactement 5 recommandations courtes (une par ligne, commence par un verbe
         )
         return await self._generate_list(prompt)
 
-    async def generate_training_plan(self, profile: dict, program: dict) -> list[dict]:
-        """Génère un plan d'entraînement structuré avec exercices, séries et répétitions."""
+    async def select_training_plan(
+        self,
+        profile: dict,
+        program: dict,
+        catalog: list[dict],
+        nb_exercices: int = 5,
+    ) -> list[dict]:
+        """Sélectionne des exercices DANS le catalogue BDD fourni, adaptés au profil.
+
+        `catalog` = [{"id": int, "nom": str, "groupe": str, "muscle": str, "materiel": str}]
+        Retourne une liste de dicts contenant l'`id` choisi + séries/reps/justification.
+        """
+        if not catalog:
+            return []
+
         muscles = ', '.join(program.get('muscles', [])) or 'corps complet'
         contraintes_str = ', '.join(program.get('contraintes_sante', [])) or 'aucune'
+        duree_totale = program.get('duree_min', 60)
+        douleur = program.get('douleur', 'aucune')
+        lieu = program.get('lieu', 'salle')
+        materiel = program.get('materiel', 'aucun')
+        type_seance = program.get('type_seance', 'musculation')
+        niveau = program.get('niveau', 'intermediaire')
+        objectif = program.get('objectif', 'sante')
+
+        # Liste numérotée du catalogue à présenter au LLM
+        catalogue_lignes = "\n".join(
+            f"- id={c['id']} | {c['nom']} | groupe: {c['groupe']} | muscle: {c['muscle']} | materiel: {c['materiel']}"
+            for c in catalog
+        ) or "(aucun exercice du catalogue n'est compatible avec ce profil)"
+
         prompt = (
-            f"Reponds UNIQUEMENT avec un JSON valide sans texte autour. "
-            f"Tu es coach sportif. Genere un plan d'entrainement de 4 a 6 exercices pour ce profil:\n"
-            f"- Objectif: {program.get('objectif', 'sante')}\n"
-            f"- Niveau: {program.get('niveau', 'intermediaire')}\n"
-            f"- Muscles cibles: {muscles}\n"
-            f"- Duree seance: {program.get('duree_min', 60)} minutes\n"
-            f"- Materiel disponible: {program.get('materiel', 'salle de sport')}\n"
-            f"- Type de seance: {program.get('type_seance', 'musculation')}\n"
-            f"- Lieu: {program.get('lieu', 'salle')}\n"
+            f"Reponds UNIQUEMENT avec un JSON valide, sans texte autour. "
+            f"Tu es coach sportif certifie qui construit une seance 100% personnalisee.\n\n"
+            f"CATALOGUE D'EXERCICES DISPONIBLES (id, nom, GROUPE musculaire, materiel). "
+            f"Ces exercices ont deja ete filtres pour etre compatibles avec le lieu, le materiel et les douleurs de l'utilisateur:\n"
+            f"{catalogue_lignes}\n\n"
+            f"PROFIL DE L'UTILISATEUR (a respecter IMPERATIVEMENT):\n"
+            f"- Objectif: {objectif}\n"
+            f"- Niveau: {niveau}\n"
+            f"- Type de seance: {type_seance}\n"
+            f"- Lieu: {lieu}\n"
+            f"- Materiel disponible: {materiel}\n"
+            f"- Muscles cibles EN PRIORITE: {muscles}\n"
+            f"- Duree totale de la seance: {duree_totale} minutes (repartir entre les exercices)\n"
             f"- Contraintes sante: {contraintes_str}\n"
-            f"- Douleurs/limitations: {program.get('douleur', 'aucune')}\n"
-            f'Format JSON: [{{"nom":"Developpe couche","muscles":["pectoraux","triceps"],"series":4,"repetitions":"8-12","repos":"90s","intensite":"moderee","description":"Description et conseil de execution de l exercice"}}]'
+            f"- Douleurs/limitations: {douleur}\n\n"
+            f"CONSIGNES STRICTES:\n"
+            f"1. Propose exactement {nb_exercices} exercices.\n"
+            f"2. PRIVILEGIE les exercices DU CATALOGUE ci-dessus (via leur id) dont le GROUPE correspond aux muscles cibles ({muscles}).\n"
+            f"3. Si le catalogue ne contient pas assez d'exercices adaptes (par ex. seance {type_seance}, a {lieu}, "
+            f"sans materiel, ou en evitant {douleur}), tu DOIS INVENTER des exercices reels et adaptes toi-meme: "
+            f'mets "id": null et donne un "nom" precis (en francais) et la liste "muscles".\n'
+            f"4. Si le type de seance est 'cardio', propose surtout des mouvements cardio.\n"
+            f"5. INTERDIT: tout exercice qui sollicite une zone douloureuse ({douleur}) ou aggrave une contrainte ({contraintes_str}). "
+            f"Si la contrainte est cardiaque, garde une intensite faible a moderee (jamais maximale).\n"
+            f"6. Respecte le lieu/materiel: a la maison sans materiel, propose uniquement des exercices au poids du corps.\n"
+            f"7. Ne repete jamais deux fois le meme exercice.\n"
+            f"8. La justification (1 phrase) doit citer EXPLICITEMENT les infos du profil qui motivent ce choix "
+            f"(muscles cibles, objectif {objectif}, niveau {niveau}, lieu {lieu}, et la facon dont l'exercice respecte la douleur/contrainte).\n\n"
+            f'Format JSON STRICT: {{"exercices":[{{"id":12,"nom":"<nom exact>","muscles":["<groupe>"],"series":3,'
+            f'"repetitions":"10-12","repos":"90s","intensite":"moderee","duree_min":15,'
+            f'"justification":"Choisi car il cible vos <muscles> pour <objectif>, realisable a <lieu>, et evite <douleur>."}}]}}'
         )
 
         try:
-            raw = await self._call_ollama(prompt, json_mode=True)
-            start = raw.find("[")
-            end = raw.rfind("]")
-            if start != -1 and end != -1:
-                return json.loads(raw[start:end + 1])
+            raw = await self._call_ollama(prompt, json_mode=True, temperature=0.3)
+            logger.info("Ollama select plan raw (first 600): %s", raw[:600])
+            parsed = _safe_json(raw)
+            items: list[dict] = []
+            if isinstance(parsed, list):
+                items = [d for d in parsed if isinstance(d, dict)]
+            elif isinstance(parsed, dict):
+                for key in ("exercices", "exercises", "plan", "selection", "seance"):
+                    if isinstance(parsed.get(key), list):
+                        items = [d for d in parsed[key] if isinstance(d, dict)]
+                        break
+                if not items and ("id" in parsed):
+                    items = [parsed]
+            return items
         except Exception as exc:
-            logger.error("Ollama training plan error: %s", exc)
+            logger.error("Ollama select plan error: %s", exc)
         return []
 
     async def generate_meal_plan(self, profile: dict, targets: dict) -> list[dict]:
@@ -250,10 +305,12 @@ Donne exactement 5 recommandations courtes (une par ligne, commence par un verbe
             logger.error("Ollama error: %s", exc)
             return []
 
-    async def _call_ollama(self, prompt: str, json_mode: bool = False) -> str:
+    async def _call_ollama(self, prompt: str, json_mode: bool = False, temperature: float | None = None) -> str:
         payload: dict = {"model": self.model, "prompt": prompt, "stream": False}
         if json_mode:
             payload["format"] = "json"
+        if temperature is not None:
+            payload["options"] = {"temperature": temperature}
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
                 f"{self.base_url}/api/generate",

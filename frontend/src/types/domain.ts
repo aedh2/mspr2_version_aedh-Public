@@ -440,6 +440,10 @@ export type SportExerciseRecommendation = {
   adaptations?: string[];
   contre_indications: string[];
   contraintes_respectees: string[];
+  gif_url?: string | null;
+  nom_db?: string | null;
+  exercice_id_db?: number | null;
+  calories_brulees?: number | null;
 };
 
 export type SportSessionRecommendation = {
