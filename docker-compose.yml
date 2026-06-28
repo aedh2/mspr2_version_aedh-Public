@@ -21,6 +21,20 @@ services:
       timeout: 5s
       retries: 20
 
+  mongo:
+    image: mongo:7
+    container_name: healthai-mongo
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - healthai_mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./backend
@@ -35,6 +49,9 @@ services:
       DB_USER: ${DB_USER:-healthai}
       DB_PASSWORD: ${DB_PASSWORD:-healthai}
       DB_NAME: ${DB_NAME:-healthai_coaching}
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DB_NAME: ${MONGO_DB_NAME:-healthai_nosql}
+      MONGO_ENABLED: ${MONGO_ENABLED:-true}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-local-dev}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000","http://localhost:8000"]'
@@ -56,6 +73,8 @@ services:
       - ./data/uploads:/app/data/uploads
     depends_on:
       db:
+        condition: service_healthy
+      mongo:
         condition: service_healthy
 
   frontend:
@@ -107,3 +126,4 @@ services:
 
 volumes:
   healthai_db_data:
+  healthai_mongo_data:

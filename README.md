@@ -1,16 +1,22 @@
 # HealthAI Coaching — MSPR
 
-Plateforme complète de coaching santé : pipeline ETL Python, API FastAPI, front Next.js, base MariaDB.
+Plateforme complète de coaching santé : pipeline ETL Python, API FastAPI, front Next.js, persistance polyglotte MariaDB (relationnel) + MongoDB (documentaire).
 
 ## Stack
 
 | Couche | Techno |
 |---|---|
-| Base de données | MariaDB 10.11 |
-| Backend API | FastAPI (Python 3.11) + SQLAlchemy |
+| Base relationnelle (SQL) | MariaDB 10.11 |
+| Base documentaire (NoSQL) | MongoDB 7 |
+| Backend API | FastAPI (Python 3.11) + SQLAlchemy + PyMongo |
 | Frontend | Next.js 14 (App Router, TypeScript) |
 | ETL | Python (pandas, SQLAlchemy) |
 | Conteneurs | Docker / docker-compose |
+
+### Persistance polyglotte
+
+- **MariaDB** — données structurées et relationnelles : profils, mesures biométriques/sommeil, séances, catalogue exercices/aliments, objectifs, traçabilité ETL.
+- **MongoDB** — documents à schéma variable produits par l'IA : analyses de plats (`food_analyses`) et recommandations générées (`recommendations`). La couche NoSQL est **tolérante aux pannes** : si MongoDB est indisponible, l'API reste fonctionnelle (mode dégradé, aucune écriture bloquante).
 
 ## Arborescence
 
@@ -56,6 +62,9 @@ docker compose --profile etl run --rm etl
 | Swagger | http://localhost:8000/api/docs |
 | Healthcheck | http://localhost:8000/health |
 | MariaDB | localhost:3306 |
+| MongoDB | localhost:27017 |
+
+> Le `/health` renvoie l'état des deux bases : `{"databases":{"relationnel":"mariadb","documentaire":"ok"}}`.
 
 ### Identifiants de test
 
@@ -158,6 +167,10 @@ Variables d'env principales (voir `.env.example`) :
 - `POST /api/auth/login` — connexion
 - `GET /api/me/profile` — profil utilisateur courant
 - `GET /api/me/seances` — historique séances
+- `POST /api/ai/analyse-repas` — analyse photo (Gemini), persistée dans MongoDB
+- `GET /api/ai/analyse-repas/history` — relecture NoSQL des analyses (`food_analyses`)
+- `POST /api/ai/recommandations` — recommandations (Ollama), persistées dans MongoDB
+- `GET /api/ai/recommandations/history` — relecture NoSQL des recommandations (`recommendations`)
 - `GET /api/admin/dashboard/charts/*` — KPIs admin
 - `GET /api/super-admin/monitoring/*` — monitoring ETL
 - `/media/exercises/*`, `/media/organisations/*`, `/media/progression/*` — fichiers statiques

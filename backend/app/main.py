@@ -16,6 +16,7 @@ from app.core.logging import setup_logging
 from app.core.middleware import RequestLogMiddleware
 from app.core.rate_limit import install_rate_limiter
 from app.db.demo_accounts import ensure_demo_accounts
+from app.db.mongo import mongo_status
 from app.db.session import get_session_factory
 from app.modules.api import api_router
 
@@ -80,7 +81,15 @@ def create_app() -> FastAPI:
 
     @fastapi_app.get("/health", tags=["health"])
     def health() -> dict:
-        return {"data": {"status": "ok"}}
+        return {
+            "data": {
+                "status": "ok",
+                "databases": {
+                    "relationnel": "mariadb",
+                    "documentaire": mongo_status(),
+                },
+            }
+        }
 
     @fastapi_app.on_event("startup")
     def ensure_local_demo_accounts() -> None:

@@ -3,9 +3,25 @@
 ## URLs
 
 - Frontend : http://localhost:3000
-- Healthcheck : http://localhost:8000/health
+- Healthcheck : http://localhost:8000/health (montre l'état des **deux bases** : relationnel + documentaire)
 - Swagger : http://localhost:8000/api/docs
 - OpenAPI : http://localhost:8000/api/openapi.json
+
+## Démo SQL + NoSQL (à montrer au jury)
+
+1. `curl http://localhost:8000/health` → `"databases":{"relationnel":"mariadb","documentaire":"ok"}`.
+2. Générer une recommandation et une analyse de plat depuis le front (espace utilisateur).
+3. Relire la couche NoSQL via Swagger ou curl :
+   - `GET /api/ai/recommandations/history` (collection `recommendations`)
+   - `GET /api/ai/analyse-repas/history` (collection `food_analyses`)
+   - `GET /api/ai/ai-calls/history` (collection `ai_provider_calls` — observabilité IA)
+   - `GET /api/ai/recommandations/feedback/history` (collection `recommendation_feedback`)
+4. Voir les documents bruts dans MongoDB :
+   ```powershell
+   docker exec healthai-mongo mongosh healthai_nosql --quiet --eval "db.getCollectionNames()"
+   docker exec healthai-mongo mongosh healthai_nosql --quiet --eval "db.recommendations.findOne()"
+   ```
+5. **Résilience** : si Mongo est coupé (`docker compose stop mongo`), l'API reste fonctionnelle et `/health` bascule `documentaire` sur `unavailable` (mode dégradé, aucune écriture bloquante).
 
 ## Comptes
 

@@ -47,7 +47,7 @@ from app.schemas.me import ChartParams, chart_params, chart_params_no_metric
 from app.schemas.meal_analysis import MealAnalysisRequest
 from app.schemas.onboarding import OnboardingRequest
 from app.schemas.recommendations import RecommendationEnvelope, RecommendationRequest
-from app.services import me_metrics, me_nutrition, me_sport
+from app.services import document_store, me_metrics, me_nutrition, me_sport
 from app.services.coach_posture import CoachPostureService
 from app.services.meal_analysis import MealAnalysisService
 from app.services.profile_setup import complete_user_profile
@@ -797,9 +797,13 @@ def analyse_plat(
     db: Session = Depends(get_db),
     user: Utilisateur = Depends(current_user),
 ) -> dict[str, Any]:
-    _ = user.utilisateur_id
     service = MealAnalysisService(get_settings())
-    return {"data": service.analyze(db, payload.image_base64, payload.mime_type).model_dump()}
+    result = service.analyze(db, payload.image_base64, payload.mime_type).model_dump()
+    # Persistance NoSQL (MongoDB): trace documentaire de l'analyse.
+    analyse_id = document_store.save_meal_analysis(user.utilisateur_id, result, source="huggingface")
+    if analyse_id:
+        result["analyse_id"] = analyse_id
+    return {"data": result}
 
 
 @router.post("/coach-posture/feedback")
@@ -839,7 +843,10 @@ def recommandations(
 ) -> dict[str, Any]:
     request = payload or RecommendationRequest()
     service = RecommendationEngine()
-    return {"data": service.build(db, user, request)}
+    result = service.build(db, user, request)
+    # Persistance NoSQL (MongoDB): document de recommandation complet.
+    document_store.save_recommendation(user.utilisateur_id, result.model_dump(mode="json"), source="local_rules")
+    return {"data": result}
 
 
 @router.post("/plats", status_code=201)

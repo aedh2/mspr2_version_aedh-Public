@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from datetime import datetime
 from typing import Any
 
@@ -19,6 +20,7 @@ from app.db.models import Exercice, SeanceEntrainement, SeanceExercice, Utilisat
 from app.db.session import get_db
 from app.modules.resources import media_url
 from app.schemas.recommendations import RecommendationRequest
+from app.services import document_store
 from app.services.ai_enhanced import GeminiVisionService, OllamaLLMService
 from app.services.recommendations import RecommendationEngine
 
@@ -57,6 +59,14 @@ class RecommendationResponse(BaseModel):
     meal_plan: list[dict[str, Any]]
     training_plan: list[dict[str, Any]] = []
     source: str
+
+
+class RecommendationFeedbackRequest(BaseModel):
+    recommendation_id: str | None = None
+    type: str | None = None  # sport | nutrition
+    utile: bool | None = None
+    note: int | None = None  # 1..5
+    commentaire: str | None = None
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -538,12 +548,31 @@ async def analyse_repas(
 
     service = GeminiVisionService(settings)
     if not service.is_available():
+        document_store.log_ai_call(
+            user.utilisateur_id, "gemini", "gemini-2.5-flash", "unavailable", 0,
+            {"reason": "GEMINI_API_KEY manquante"},
+        )
         raise HTTPException(
             status_code=503,
             detail="Gemini Vision non disponible — configurez GEMINI_API_KEY dans .env",
         )
 
-    foods_raw = await service.analyze(image_bytes)
+    started = time.perf_counter()
+    try:
+        foods_raw = await service.analyze(image_bytes)
+    except Exception as exc:  # noqa: BLE001 - on journalise puis on relaie l'erreur
+        document_store.log_ai_call(
+            user.utilisateur_id, "gemini", "gemini-2.5-flash", "error",
+            int((time.perf_counter() - started) * 1000), {"error": type(exc).__name__},
+        )
+        raise
+    # Liste vide = Gemini n'a rien renvoye d'exploitable (erreur HTTP, parse, timeout) -> fallback.
+    document_store.log_ai_call(
+        user.utilisateur_id, "gemini", "gemini-2.5-flash",
+        "success" if foods_raw else "fallback",
+        int((time.perf_counter() - started) * 1000),
+        {"foods_count": len(foods_raw), "fallback": not foods_raw},
+    )
 
     foods = [
         DetectedFood(
@@ -555,11 +584,20 @@ async def analyse_repas(
         for f in foods_raw
     ]
 
-    return MealAnalysisResponse(
+    response = MealAnalysisResponse(
         foods=foods,
         total_macros=_sum_macros(foods_raw),
         source="gemini-2.5-flash",
     )
+
+    # Persistance NoSQL: le resultat de vision a un schema variable -> MongoDB.
+    document_store.save_meal_analysis(
+        user.utilisateur_id,
+        response.model_dump(mode="json"),
+        source="gemini-2.5-flash",
+    )
+
+    return response
 
 
 @router.post(
@@ -619,13 +657,19 @@ async def recommandations_ia(
     }
 
     llm = OllamaLLMService(settings)
+    ollama_model = settings.ollama_model
     if not llm.is_available():
+        document_store.log_ai_call(
+            user.utilisateur_id, "ollama", ollama_model, "unavailable", 0,
+            {"reason": "service Ollama injoignable"},
+        )
         return RecommendationResponse(
             sport_tips=[],
             nutrition_tips=[],
             meal_plan=[],
             source="unavailable",
         )
+    started = time.perf_counter()
 
     # Catalogue BDD filtré selon lieu / matériel / zones douloureuses
     catalog, id_map = _build_exercise_catalog(db)
@@ -645,22 +689,126 @@ async def recommandations_ia(
 
     # Résolution : id du catalogue filtré (GIF réel) ou exercice inventé par le LLM
     clean_training = _resolve_selection(selection, id_map, filtered_catalog, sport_program, duree_defaut)
-    if len(clean_training) < nb_exercices:
+    used_training_fallback = len(clean_training) < nb_exercices
+    if used_training_fallback:
         # Compléter / remplacer par un repli déterministe ciblé (catalogue + poids du corps)
         clean_training = _fallback_selection(sport_program, filtered_catalog, id_map, nb_exercices, duree_defaut)
+    # Le LLM a-t-il vraiment produit du contenu ? (sinon repli deterministe)
+    llm_failed = not (sport_tips or nutrition_tips or meal_plan)
 
     # Estimation des calories brûlées par exercice (selon intensité, durée et poids)
     poids_kg = getattr(user, "poids_kg", None)
     for item in clean_training:
         item["calories"] = _estimate_calories(item.get("duree_min") or 0, item.get("intensite"), poids_kg)
 
-    return RecommendationResponse(
+    response = RecommendationResponse(
         sport_tips=sport_tips,
         nutrition_tips=nutrition_tips,
         meal_plan=[d for d in meal_plan if isinstance(d, dict)],
         training_plan=clean_training,
         source="ollama-llama3.2",
     )
+
+    # Persistance NoSQL: recommandations + contexte utilisateur -> MongoDB.
+    payload = response.model_dump(mode="json")
+    payload["contexte_utilisateur"] = {
+        "utilisateur_id": user.utilisateur_id,
+        "objectif": profile.get("goal"),
+        "niveau_sportif": profile.get("fitness_level"),
+        "allergies": profile.get("allergies"),
+        "regime": profile.get("regime"),
+        "contraintes_sante": profile.get("contraintes_sante"),
+        "preferences": profile.get("preferences"),
+        "aliments_evites": profile.get("aliments_evites"),
+        "culture": profile.get("culture"),
+        "budget": profile.get("budget"),
+        "type_repas": profile.get("type_repas"),
+        "programme_sport": {
+            "sessions": sport_program.get("sessions"),
+            "muscles": sport_program.get("muscles"),
+            "duree_min": sport_program.get("duree_min"),
+            "materiel": sport_program.get("materiel"),
+            "type_seance": sport_program.get("type_seance"),
+            "lieu": sport_program.get("lieu"),
+            "douleur": sport_program.get("douleur"),
+        },
+    }
+    document_store.save_recommendation(user.utilisateur_id, payload, source="ollama-llama3.2")
+
+    # Journal technique de l'appel IA: latence, erreurs, fallback.
+    document_store.log_ai_call(
+        user.utilisateur_id, "ollama", ollama_model,
+        "fallback" if (llm_failed or used_training_fallback) else "success",
+        int((time.perf_counter() - started) * 1000),
+        {
+            "fallback": llm_failed or used_training_fallback,
+            "llm_failed": llm_failed,
+            "training_fallback": used_training_fallback,
+            "sport_tips": len(sport_tips),
+            "nutrition_tips": len(nutrition_tips),
+            "exercices": len(clean_training),
+        },
+    )
+
+    return response
+
+
+@router.get(
+    "/analyse-repas/history",
+    summary="Historique NoSQL des analyses de plats",
+    description="Relit les derniers documents d'analyse stockes dans MongoDB (collection food_analyses).",
+)
+def analyse_repas_history(
+    user: Utilisateur = Depends(current_user),
+) -> dict[str, Any]:
+    return {"data": document_store.recent_meal_analyses(user.utilisateur_id)}
+
+
+@router.get(
+    "/recommandations/history",
+    summary="Historique NoSQL des recommandations",
+    description="Relit les dernieres recommandations stockees dans MongoDB (collection recommendations).",
+)
+def recommandations_history(
+    user: Utilisateur = Depends(current_user),
+) -> dict[str, Any]:
+    return {"data": document_store.recent_recommendations(user.utilisateur_id)}
+
+
+@router.post(
+    "/recommandations/feedback",
+    status_code=201,
+    summary="Retour utilisateur sur une recommandation (NoSQL)",
+    description="Enregistre un feedback dans MongoDB (collection recommendation_feedback).",
+)
+def recommandations_feedback(
+    payload: RecommendationFeedbackRequest,
+    user: Utilisateur = Depends(current_user),
+) -> dict[str, Any]:
+    feedback_id = document_store.save_feedback(user.utilisateur_id, payload.model_dump())
+    return {"data": {"feedback_id": feedback_id, "saved": feedback_id is not None}}
+
+
+@router.get(
+    "/recommandations/feedback/history",
+    summary="Historique NoSQL des retours utilisateurs",
+    description="Relit les feedbacks stockes dans MongoDB (collection recommendation_feedback).",
+)
+def recommandations_feedback_history(
+    user: Utilisateur = Depends(current_user),
+) -> dict[str, Any]:
+    return {"data": document_store.recent_feedback(user.utilisateur_id)}
+
+
+@router.get(
+    "/ai-calls/history",
+    summary="Journal NoSQL des appels IA (observabilite)",
+    description="Relit le journal des appels IA dans MongoDB (collection ai_provider_calls): provider, modele, duree, statut.",
+)
+def ai_calls_history(
+    user: Utilisateur = Depends(current_user),
+) -> dict[str, Any]:
+    return {"data": document_store.recent_ai_calls(user.utilisateur_id)}
 
 
 async def _run_llm(

@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2:1b"
+    mongo_url: str = "mongodb://localhost:27017"
+    mongo_db_name: str = "healthai_nosql"
+    mongo_enabled: bool = True
+    mongo_timeout_ms: int = 800
 
     model_config = SettingsConfigDict(
         env_file=("healthai_etl/.env", "backend/.env", ".env"),
