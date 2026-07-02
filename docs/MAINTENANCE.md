@@ -59,8 +59,29 @@ Variables surchargeables : `DB_CONTAINER`, `MONGO_CONTAINER`, `DB_NAME`, `MONGO_
 
 > Scripts et Makefile s'exécutent sous un shell POSIX (Linux, macOS, ou Git Bash / WSL sous Windows).
 
-## 4. Supervision
+## 4. Supervision & monitoring
 
+### Signaux applicatifs
 - `GET /health` expose l'état des deux bases : `{"databases":{"relationnel":"mariadb","documentaire":"ok"}}`.
+- `GET /metrics` expose les métriques Prometheus (requêtes, latence, statuts par endpoint).
 - Observabilité IA : chaque appel (Gemini/Ollama) est journalisé dans MongoDB (`ai_provider_calls`) → KPI taux de repli, latence, disponibilité.
-- Un monitoring de la stack (Prometheus/Grafana) est prévu dans un lot ultérieur.
+
+### Stack Prometheus + Grafana
+
+Fichiers : [`docker-compose.monitoring.yml`](../docker-compose.monitoring.yml) et [`monitoring/`](../monitoring).
+
+```bash
+make monitoring-up
+# ou : docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+```
+
+| Service | URL | Détails |
+|---|---|---|
+| **Prometheus** | http://localhost:9090 | scrape `backend:8000/metrics` toutes les 15 s |
+| **Grafana** | http://localhost:3001 | login `admin` / `admin` — dashboard **« HealthAI Coach — Supervision »** provisionné automatiquement |
+
+Le dashboard affiche : requêtes/s, latence p50/p95/p99, erreurs 5xx, trafic par endpoint et par statut.
+
+```bash
+make monitoring-down   # arrête la stack + le monitoring
+```

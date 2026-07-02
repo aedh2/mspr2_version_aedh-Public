@@ -3,7 +3,9 @@
 .RECIPEPREFIX := >
 COMPOSE ?= docker compose
 
-.PHONY: help up down reset ps logs test backup restore
+.PHONY: help up down reset ps logs test backup restore monitoring-up monitoring-down
+
+MONITORING = -f docker-compose.yml -f docker-compose.monitoring.yml
 
 help:
 > @echo "Cibles disponibles :"
@@ -15,6 +17,8 @@ help:
 > @echo "  make test               Tests backend (pytest)"
 > @echo "  make backup             Sauvegarde MariaDB + MongoDB -> backups/"
 > @echo "  make restore DIR=...    Restaure une sauvegarde (ex: DIR=backups/20260702_120000)"
+> @echo "  make monitoring-up      Démarre la stack + Prometheus + Grafana"
+> @echo "  make monitoring-down    Arrête la stack + monitoring"
 
 up:
 > $(COMPOSE) up -d --build
@@ -40,3 +44,9 @@ backup:
 
 restore:
 > bash scripts/restore.sh $(DIR)
+
+monitoring-up:
+> $(COMPOSE) $(MONITORING) up -d --build
+
+monitoring-down:
+> $(COMPOSE) $(MONITORING) down
