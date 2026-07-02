@@ -44,3 +44,7 @@ Thumbs.db
 # PDF / images de référence du sujet
 *.pdf
 sa-dashboard*.png
+
+# Sauvegardes générées (dumps BDD) — garder le dossier, pas son contenu
+backups/*
+!backups/.gitkeep

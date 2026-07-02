@@ -1,0 +1,56 @@
+name: CI
+
+# Pipeline d'intégration continue — blocs 3/4 (produire & maintenir).
+# À chaque push / pull request : tests backend + build frontend.
+on:
+  push:
+    branches: [maintenance, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend-tests:
+    name: Backend · tests (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      # Tests autonomes (SQLite en mémoire) : aucune base externe requise.
+      MONGO_ENABLED: "false"
+      JWT_SECRET_KEY: ci-test-secret
+      ENVIRONMENT: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tests
+        run: pytest -q
+
+  frontend-build:
+    name: Frontend · build (Next.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: mkdir -p public && npm run build
